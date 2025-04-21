@@ -39,7 +39,7 @@ if query:
 
 
 # ----------------- GEMINI CONFIG -----------------
-genai.configure(api_key="AIzaSyA07YgUBb6a2n2_g57Hb9TUUMKEmItq8Cw")
+genai.configure(api_key="YOUR_API_KEY")
 model = genai.GenerativeModel("models/gemini-1.5-pro")
 
 # ----------------- SESSION STATE -----------------
