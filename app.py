@@ -9,6 +9,9 @@ import docx
 import PyPDF2
 import requests
 import google.generativeai as genai
+import os
+os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
+
 
 # ----------------- INITIAL SESSION STATE -----------------
 if "show_chat" not in st.session_state:
