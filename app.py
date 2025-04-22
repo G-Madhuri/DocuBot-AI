@@ -78,7 +78,7 @@ if st.session_state.show_chat:
             st.session_state.chat_input = ""
 
 # ----------------- NLP HELPERS -----------------
-summarizer = pipeline("summarization")
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 def extract_text_from_docx(file):
     doc = docx.Document(file)
