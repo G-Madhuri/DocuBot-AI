@@ -81,7 +81,12 @@ if st.session_state.show_chat:
             st.session_state.chat_input = ""
 
 # ----------------- NLP HELPERS -----------------
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+
+summarizer = load_summarizer()
+
 
 def extract_text_from_docx(file):
     doc = docx.Document(file)
