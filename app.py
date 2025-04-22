@@ -27,7 +27,7 @@ if "last_uploaded" not in st.session_state:
     st.session_state.last_uploaded = None
 
 # ----------------- GEMINI CONFIG -----------------
-genai.configure(api_key="YOUR_API_KEY")
+genai.configure(api_key="AIzaSyBIt30WXJzKAZ721UEKWNTpTBzC1xxnvNQ")
 model = genai.GenerativeModel("models/gemini-1.5-pro")
 
 # ----------------- LEGAL TERM EXPLAINER -----------------
