@@ -10,8 +10,10 @@ import PyPDF2
 import requests
 import google.generativeai as genai
 import os
-os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
-
+import string
+import nltk
+from nltk.corpus import stopwords
+nltk.download('stopwords')
 
 # ----------------- INITIAL SESSION STATE -----------------
 if "show_chat" not in st.session_state:
@@ -87,7 +89,6 @@ def load_summarizer():
 
 summarizer = load_summarizer()
 
-
 def extract_text_from_docx(file):
     doc = docx.Document(file)
     return '\n'.join([para.text for para in doc.paragraphs])
@@ -102,6 +103,13 @@ def extract_text_from_pdf(file):
 def chunk_text(text, max_words=500):
     words = text.split()
     return [" ".join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
+
+# ----------------- CLEANING FUNCTION -----------------
+def clean_and_tokenize(text):
+    translator = str.maketrans('', '', string.punctuation)
+    words = text.lower().translate(translator).split()
+    stop_words = set(stopwords.words("english"))
+    return [word for word in words if word not in stop_words and word.isalpha()]
 
 # ----------------- MAIN INTERFACE -----------------
 st.title("📑 DocuBot AI")
@@ -127,13 +135,13 @@ if uploaded_file:
     else:
         text = st.session_state.text
 
-    # Text Stats
-    word_count = len(text.split())
+    cleaned_words = clean_and_tokenize(text)
+    word_count = len(cleaned_words)
     sentence_count = text.count('.') + text.count('!') + text.count('?')
     paragraph_count = sum(1 for para in text.split('\n') if para.strip() != '')
     character_count = len(text)
     readability_score = flesch_kincaid_grade(text)
-    common_words = Counter(text.split()).most_common(10)
+    common_words = Counter(cleaned_words).most_common(10)
 
     if st.button("Summarize Text"):
         try:
@@ -155,18 +163,18 @@ if uploaded_file:
         st.download_button("Download Summary", st.session_state.final_summary, file_name="summary.txt")
 
     st.subheader("📊 Text Analysis")
-    st.write(f"Words: {word_count}")
+    st.write(f"Words (cleaned): {word_count}")
     st.write(f"Sentences: {sentence_count}")
     st.write(f"Paragraphs: {paragraph_count}")
     st.write(f"Characters: {character_count}")
     st.write(f"Readability Score: {readability_score:.2f}")
 
-    st.subheader("🔤 Most Common Words")
+    st.subheader("🔤 Most Common Words (without stopwords/punctuation)")
     df_common = pd.DataFrame(common_words, columns=["Word", "Count"])
     st.write(df_common)
 
     st.subheader("☁️ Word Cloud")
-    wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text)
+    wordcloud = WordCloud(width=800, height=400, background_color="white").generate(" ".join(cleaned_words))
     plt.figure(figsize=(10, 5))
     plt.imshow(wordcloud, interpolation="bilinear")
     plt.axis("off")
