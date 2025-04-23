@@ -15,6 +15,8 @@ import nltk
 from nltk.corpus import stopwords
 nltk.download('stopwords')
 
+os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
+
 # ----------------- INITIAL SESSION STATE -----------------
 if "show_chat" not in st.session_state:
     st.session_state.show_chat = False
@@ -32,7 +34,7 @@ if "last_uploaded" not in st.session_state:
     st.session_state.last_uploaded = None
 
 # ----------------- GEMINI CONFIG -----------------
-genai.configure(api_key="AIzaSyBIt30WXJzKAZ721UEKWNTpTBzC1xxnvNQ")
+genai.configure(api_key="AIzaSyA4hyrhjAFJwceOmrsxWEP0bCc8Xme9nc0")
 model = genai.GenerativeModel("models/gemini-1.5-pro")
 
 # ----------------- LEGAL TERM EXPLAINER -----------------
@@ -61,9 +63,10 @@ if query:
         st.sidebar.markdown(f"**Definition of '{query}':**")
         st.sidebar.write(meaning)
 
-if st.sidebar.button("💬 More queries?"):
+if st.sidebar.button("💬 Any more queries?"):
     st.session_state.show_chat = not st.session_state.show_chat
 
+# ----------------- MAIN CHATBOT (Regular) -----------------
 if st.session_state.show_chat:
     st.sidebar.markdown("### 🤖 Chat Assistant")
     for user, bot in st.session_state.chat_history:
@@ -81,6 +84,7 @@ if st.session_state.show_chat:
                 reply = f"⚠️ Error: {str(e)}"
             st.session_state.chat_history.append((user_input, reply))
             st.session_state.chat_input = ""
+
 
 # ----------------- NLP HELPERS -----------------
 @st.cache_resource
@@ -100,12 +104,18 @@ def extract_text_from_pdf(file):
         text += page.extract_text() or ''
     return text
 
-def chunk_text(text, max_words=500):
+def chunk_text(text, max_words=700):  # Increased chunk size
     words = text.split()
     return [" ".join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
 
 # ----------------- CLEANING FUNCTION -----------------
 def clean_and_tokenize(text):
+    translator = str.maketrans('', '', string.punctuation)
+    words = text.lower().translate(translator).split()
+    stop_words = set(stopwords.words("english"))
+    return [word for word in words if word not in stop_words and word.isalpha()]
+
+def clean_and_tokenize_without_stopwords(text):
     translator = str.maketrans('', '', string.punctuation)
     words = text.lower().translate(translator).split()
     stop_words = set(stopwords.words("english"))
@@ -126,7 +136,7 @@ if uploaded_file:
         else:
             st.error("Unsupported file format.")
             st.stop()
-        
+
         # Reset session states
         st.session_state.text = text
         st.session_state.final_summary = None
@@ -135,23 +145,36 @@ if uploaded_file:
     else:
         text = st.session_state.text
 
-    cleaned_words = clean_and_tokenize(text)
-    word_count = len(cleaned_words)
+    # Text Stats (keep stopwords in text analysis)
+    word_count = len(text.split())
     sentence_count = text.count('.') + text.count('!') + text.count('?')
     paragraph_count = sum(1 for para in text.split('\n') if para.strip() != '')
     character_count = len(text)
     readability_score = flesch_kincaid_grade(text)
+    
+    # Tokenize and remove stopwords for word cloud and most common words
+    cleaned_words = clean_and_tokenize_without_stopwords(text)
     common_words = Counter(cleaned_words).most_common(10)
 
     if st.button("Summarize Text"):
         try:
             with st.spinner("Summarizing... Please wait."):
-                chunks = chunk_text(text, max_words=500)
+
+                # Increase chunk size to around 700 words per chunk
+                chunks = chunk_text(text, max_words=700)
                 summaries = []
+                total_word_count = 0
+
                 for chunk in chunks:
-                    summary = summarizer(chunk, max_length=130, min_length=30, do_sample=False)[0]['summary_text']
+                    summary = summarizer(chunk, max_length=200, min_length=50, do_sample=False)[0]['summary_text']
+                    total_word_count += len(summary.split())
                     summaries.append(summary)
+
                 final_summary = " ".join(summaries)
+                # Ensure summary length is closer to 1300 words
+                if total_word_count < 1300:
+                    final_summary += " " + summarizer(chunks[-1], max_length=300, min_length=100, do_sample=False)[0]['summary_text']
+
                 st.session_state.final_summary = final_summary
                 st.session_state.hide_msg = True
         except Exception as e:
@@ -163,13 +186,13 @@ if uploaded_file:
         st.download_button("Download Summary", st.session_state.final_summary, file_name="summary.txt")
 
     st.subheader("📊 Text Analysis")
-    st.write(f"Words (cleaned): {word_count}")
+    st.write(f"Words: {word_count}")
     st.write(f"Sentences: {sentence_count}")
     st.write(f"Paragraphs: {paragraph_count}")
     st.write(f"Characters: {character_count}")
     st.write(f"Readability Score: {readability_score:.2f}")
 
-    st.subheader("🔤 Most Common Words (without stopwords/punctuation)")
+    st.subheader("🔤 Most Common Words")
     df_common = pd.DataFrame(common_words, columns=["Word", "Count"])
     st.write(df_common)
 
@@ -187,3 +210,32 @@ if uploaded_file:
     df_stats = pd.DataFrame(stats)
     csv = df_stats.to_csv(index=False).encode('utf-8')
     st.download_button("Download Text Stats as CSV", csv, "text_stats.csv", "text/csv")
+
+# ------------------------- 
+# 📄 Chatbot (File-Aware)
+# -------------------------
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📄 Ask based on uploaded file")
+
+if "chat_file_history" not in st.session_state:
+    st.session_state.chat_file_history = []
+
+user_file_question = st.sidebar.text_input("Ask about the file...", key="file_chat_input")
+
+if st.sidebar.button("Ask (File Context)"):
+    if not st.session_state.text:
+        st.sidebar.warning("Please upload a file first!")
+    elif user_file_question:
+        file_context = st.session_state.text[::]  # Trim if needed
+        full_prompt = (
+            "Use the following document content to answer the user's question:\n\n"
+            f"---\n{file_context}\n---\n\n"
+            f"User's question: {user_file_question}"
+        )
+        try:
+            response = model.generate_content(full_prompt)
+            st.session_state.chat_file_history.append((user_file_question, response.text))
+            st.sidebar.markdown(f"**You:** {user_file_question}")
+            st.sidebar.markdown(f"**Bot:** {response.text}")
+        except Exception as e:
+            st.sidebar.error(f"Error: {str(e)}")
